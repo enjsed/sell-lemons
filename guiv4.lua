@@ -3865,4 +3865,160 @@ _wrap("auto-minigame", function()
                 end
 
                 if not MG.miniEnd then
-                    loca
+                    local synced = false
+                    for _ = 1, 6 do
+                        if not MG.active then break end
+                        MG.tsT = 0
+                        local cd2 = MG.timerSec()
+                        if cd2 and cd2 > 0 then MG.miniEnd = tick_() + cd2; synced = true; break end
+                        if MG.findBtn("PICK") or MG.findBtn("CHEER") then break end
+                        task_wait(0.5)
+                    end
+                    if synced then task_wait(0.5); return end
+                end
+
+                if (tick_() - (MG.lastEntryTry or 0)) < 6 then task_wait(0.5); return end
+
+                if (tick_() - (RB.busyT or 0)) < 4 then task_wait(0.5); return end
+                MG.lastEntryTry = tick_()
+                LSM.standBusyT = tick_()
+                MG.entryT = tick_()
+                local pos = MG.entryPos()
+                if pos then pcall_(function() _tpHrpTo(pos) end) end
+                local started = false
+                local play = MG.findBtn("PLAY", true)
+                if play then MG.click(play) end
+                for _ = 1, 12 do
+                    if not MG.active then break end
+                    MG.entryT = tick_()
+                    if MG.findBtn("PICK") or MG.findBtn("CHEER") then started = true; break end
+                    keypress(0x45); task_wait(0.04); keyrelease(0x45); task_wait(0.06)
+                end
+                task_wait(started and 0.3 or 2)
+            end)
+        end
+        task_wait(CFG.slow and 0.5 or 0.2)
+    end
+end)
+
+_wrap("auto-stand", function()
+    local lastDiag = 0
+    local firstRun = true
+    while ScriptActive do
+        syncFromUI()
+        if not autoStandActive then
+            firstRun = true
+            task_wait(0.25)
+            continue
+        end
+
+        if not myTycoon or not myTycoon.Parent then
+            myTycoon = findMyTycoon()
+            if not myTycoon then
+                if tick_() - lastDiag > 3 then
+                    print("[Stand] esperando tycoon...")
+                    lastDiag = tick_()
+                end
+                task_wait(0.5)
+                continue
+            end
+        end
+
+        if autoBuyActive and _anyBuyableNowButtons() then
+            task_wait(0.3)
+            continue
+        end
+
+        if (tick_() - (LSM.buySweepT or 0)) < 4 then
+            task_wait(0.3)
+            continue
+        end
+
+        if (tick_() - (RB.busyT or 0)) < 4 then
+            task_wait(0.5)
+            continue
+        end
+
+        if autoRebirthActive and RB.wantSlot then
+            local w0 = tick_()
+            while ScriptActive and autoStandActive and autoRebirthActive
+                  and RB.wantSlot and (tick_() - w0) < 35 do
+                task_wait(0.3)
+            end
+            if RB.wantSlot and (tick_() - w0) >= 35 then
+                RB.wantSlot = false
+            else
+                continue
+            end
+        end
+
+        if MG.lemBusy() then
+            task_wait(0.5)
+            continue
+        end
+
+        local res = runLocationsPass(firstRun)
+        firstRun = false
+
+        LSM.standBusyT = 0; LSM.zoomInT = 0
+        if res == "off" then
+            task_wait(0.05)
+            continue
+        end
+
+        if res == "yield" then
+            local w0 = tick_()
+            while ScriptActive and autoStandActive and autoBuyActive
+                  and _anyBuyableNowButtons() and (tick_() - w0) < 15 do
+                task_wait(0.3)
+            end
+            continue
+        end
+
+        local t0 = tick_()
+        while ScriptActive and autoStandActive do
+            local rest = lemonFarmActive and CFG.standRest or STAND_LOOP_DELAY
+            LSM.standNextT = t0 + rest
+            if (tick_() - t0) >= rest then break end
+            task_wait(0.25)
+        end
+    end
+end)
+
+_wrap("cancel-prompt", function()
+    while ScriptActive do
+        task_wait(0.25)
+        local cancel
+        pcall_(function()
+            local pg = getPlayerGui()
+            local pr = pg and pg:FindFirstChild("Prompt")
+            local cl = pr and pr:FindFirstChild("ChangeLabel")
+            local bt = cl and cl:FindFirstChild("Buttons")
+            cancel = bt and bt:FindFirstChild("Cancel")
+        end)
+        if cancel and _windowFocused() and (tick_() - (S.cancelT or 0)) > 1.5 then
+            local ap, az, vp
+            pcall_(function() ap = cancel.AbsolutePosition; az = cancel.AbsoluteSize; vp = camera.ViewportSize end)
+            if ap and az and vp and az.X > 10
+               and ap.X > 1 and ap.X < vp.X and ap.Y > 1 and ap.Y < vp.Y then
+                S.cancelT = tick_()
+                RB.busyT = tick_(); LSM.lastBot = tick_()
+                pcall_(function() RB.click(cancel) end)
+                rprint("[CancelPrompt] ChangeLabel -> Cancel")
+            end
+        end
+    end
+end)
+
+_G.MatchaCleanup = function()
+    pcall_(LSM.returnHome)
+    pcall_(FX.restore)
+    ScriptActive = false
+    pcall_(function() if UIRef.win then UIRef.win.visible = false end end)
+    for _, obj in ipairs_(drawObjs) do
+        pcall_(function() obj:Remove() end)
+    end
+    print("[Hub] Cleanup done")
+end
+
+rprint("sell lemons v1 loaded  |  by enjsed")
